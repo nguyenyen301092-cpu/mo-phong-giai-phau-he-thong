@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô phỏng 3D Giải phẫu Hệ thống PCCC: Cảm biến IR - Rơ-le 5V - Bơm & Đầu phun Sprinkler</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Font Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-mono-tech {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.3);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(56, 189, 248, 0.6);
+        }
+        /* Hotspot styling */
+        .hotspot {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            z-index: 20;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s;
+        }
+        .hotspot:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+            z-index: 30;
+        }
+        .hotspot-badge {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(14, 165, 233, 0.9);
+            border: 2px solid #ffffff;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px rgba(14, 165, 233, 0.8);
+            position: relative;
+        }
+        .hotspot.active .hotspot-badge {
+            background: #f97316;
+            box-shadow: 0 0 16px rgba(249, 115, 22, 1);
+            transform: scale(1.15);
+        }
+        .hotspot-pulse {
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 2px solid rgba(56, 189, 248, 0.6);
+            animation: pulseRing 2s infinite;
+            pointer-events: none;
+        }
+        .hotspot.active .hotspot-pulse {
+            border-color: rgba(249, 115, 22, 0.8);
+        }
+        @keyframes pulseRing {
+            0% { transform: scale(0.9); opacity: 0.9; }
+            100% { transform: scale(1.7); opacity: 0; }
+        }
+        .hotspot-label {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            color: #f8fafc;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+            opacity: 0.9;
+        }
+        /* Glass panels */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+        /* Custom range slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <!-- 3D Hotspot Markers Layer -->
+    <div id="hotspots-layer" class="w-full h-full absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <!-- Top Header Bar -->
+    <header class="absolute top-0 left-0 right-0 z-20 p-3 md:p-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <!-- Title & Badge -->
+        <div class="glass-panel rounded-xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto shadow-lg">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md shadow-orange-500/20">
+                <i data-lucide="flame" class="w-5 h-5 text-white"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm md:text-base font-bold text-white tracking-tight">Giải Phẫu 3D Hệ Thống Chữa Cháy Tự Động</h1>
+                    <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono-tech font-semibold uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-md">IR + Relay 5V + Sprinkler</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Mô hình hóa trực quan nguyên lý điện tử & thủy lực PCCC</p>
+            </div>
+        </div>
+
+        <!-- View Mode Toggles (Exploded, X-Ray, Annotations, Audio) -->
+        <div class="glass-panel rounded-xl p-1.5 flex items-center gap-1.5 pointer-events-auto shadow-lg">
+            <button id="btn-explode" onclick="toggleExplode()" class="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60" title="Bóc tách các lớp cấu tạo">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span>Bóc tách chi tiết</span>
+            </button>
+            <button id="btn-xray" onclick="toggleXray()" class="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60" title="Nhìn xuyên thấu vỏ linh kiện">
+                <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Xuyên thấu (X-Ray)</span>
+            </button>
+            <button id="btn-labels" onclick="toggleLabels()" class="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-sky-600/30 text-sky-200 border border-sky-500/50" title="Ẩn/hiện nhãn đánh số">
+                <i data-lucide="tag" class="w-3.5 h-3.5 text-sky-300"></i>
+                <span class="hidden sm:inline">Nhãn chú thích</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Camera Presets Bar (Bottom Center) -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[95vw]">
+        <div class="glass-panel rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto shadow-xl">
+            <button onclick="setCameraPreset('overview')" class="cam-preset-btn active px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 bg-sky-500/25 text-sky-200 border border-sky-400/40 transition-all">
+                <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> Toàn cảnh
+            </button>
+            <button onclick="setCameraPreset('sensor')" class="cam-preset-btn px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 text-slate-300 hover:bg-slate-800 transition-all">
+                <i data-lucide="cpu" class="w-3.5 h-3.5 text-amber-400"></i> Cảm biến IR
+            </button>
+            <button onclick="setCameraPreset('relay')" class="cam-preset-btn px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 text-slate-300 hover:bg-slate-800 transition-all">
+                <i data-lucide="zap" class="w-3.5 h-3.5 text-blue-400"></i> Giải phẫu Rơ-le 5V
+            </button>
+            <button onclick="setCameraPreset('sprinkler')" class="cam-preset-btn px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 text-slate-300 hover:bg-slate-800 transition-all">
+                <i data-lucide="droplets" class="w-3.5 h-3.5 text-cyan-400"></i> Bơm & Đầu Sprinkler
+            </button>
+        </div>
+    </div>
+
+    <!-- Left Control Panel: Simulation & Step-by-Step Principles -->
+    <aside id="left-panel" class="absolute top-20 left-3 md:left-4 z-20 w-80 max-w-[calc(100vw-24px)] glass-panel rounded-2xl shadow-2xl transition-all duration-300 flex flex-col max-h-[calc(100vh-145px)]">
+        <!-- Panel Header -->
+        <div class="px-4 py-3 border-b border-slate-700/60 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="sliders" class="w-4 h-4 text-sky-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Bảng Điều Khiển Nguyên Lý</h2>
+            </div>
+            <button onclick="toggleLeftPanel()" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Thu gọn/Mở rộng">
+                <i id="left-panel-icon" data-lucide="chevron-up" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Panel Content -->
+        <div id="left-panel-body" class="p-4 overflow-y-auto space-y-4">
+            <!-- Fire Simulation Trigger & Distance Slider -->
+            <div class="bg-slate-900/70 rounded-xl p-3 border border-slate-800 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        Nguồn lửa mô phỏng
+                    </span>
+                    <button id="btn-toggle-fire" onclick="toggleFire()" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white shadow-md shadow-orange-600/30 transition-all">
+                        <i data-lucide="flame" class="w-3.5 h-3.5"></i>
+                        <span id="btn-fire-text">Bật Ngọn Lửa</span>
+                    </button>
+                </div>
+
+                <!-- Distance / IR Intensity Slider -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-slate-400">Khoảng cách lửa → Cảm biến:</span>
+                        <span id="distance-val" class="font-mono-tech font-semibold text-sky-300">25 cm (Đạt ngưỡng)</span>
+                    </div>
+                    <input id="fire-distance-slider" type="range" min="10" max="80" value="25" oninput="updateFireDistance(this.value)" class="w-full">
+                    <div class="flex justify-between text-[10px] text-slate-500">
+                        <span>10cm (Rất gần)</span>
+                        <span>Ngưỡng: 45cm</span>
+                        <span>80cm (Xa)</span>
+                    </div>
+                </div>
+
+                <!-- Real-time Telemetry -->
+                <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80 text-center">
+                    <div class="bg-slate-950/60 rounded-lg p-1.5">
+                        <div class="text-[10px] text-slate-400">Chân DO</div>
+                        <div id="telemetry-do" class="text-xs font-mono-tech font-bold text-emerald-400">HIGH (5V)</div>
+                    </div>
+                    <div class="bg-slate-950/60 rounded-lg p-1.5">
+                        <div class="text-[10px] text-slate-400">Tiếp điểm</div>
+                        <div id="telemetry-relay" class="text-xs font-mono-tech font-bold text-slate-300">COM → NC</div>
+                    </div>
+                    <div class="bg-slate-950/60 rounded-lg p-1.5">
+                        <div class="text-[10px] text-slate-400">Bơm & Phun</div>
+                        <div id="telemetry-pump" class="text-xs font-mono-tech font-bold text-slate-400">TẮT (0%)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step-by-Step Principle Walkthrough -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Chu trình hoạt động 4 bước</h3>
+                    <span id="step-indicator" class="text-[11px] font-mono-tech text-sky-400">Bước 1/4</span>
+                </div>
+
+                <div class="space-y-1.5">
+                    <!-- Step 1 -->
+                    <button onclick="setPrincipleStep(1)" id="step-btn-1" class="step-card w-full text-left p-2.5 rounded-xl border border-sky-500/50 bg-sky-500/15 transition-all">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0">1</span>
+                            <span class="text-xs font-semibold text-white">Trạng thái chờ (Bình thường)</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 mt-1 pl-7 leading-relaxed">Không có bức xạ IR. Chân <span class="text-sky-300 font-mono-tech">DO = 5V (HIGH)</span>, cuộn hút rơ-le mất điện, tiếp điểm giữ ở <span class="text-amber-300 font-mono-tech">NC</span>, bơm tắt & đầu Sprinkler đóng.</p>
+                    </button>
+
+                    <!-- Step 2 -->
+                    <button onclick="setPrincipleStep(2)" id="step-btn-2" class="step-card w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/70 transition-all">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0">2</span>
+                            <span class="text-xs font-semibold text-slate-200">Phát hiện tia hồng ngoại (IR)</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 pl-7 leading-relaxed">Lửa phát tia IR (760-1100nm). Mắt thu <span class="text-orange-300">Photodiode</span> dẫn điện, sụt áp đưa vào <span class="text-sky-300">IC LM393</span> so sánh với ngưỡng biến trở.</p>
+                    </button>
+
+                    <!-- Step 3 -->
+                    <button onclick="setPrincipleStep(3)" id="step-btn-3" class="step-card w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/70 transition-all">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0">3</span>
+                            <span class="text-xs font-semibold text-slate-200">Xuất tín hiệu & Kích Rơ-le 5V</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 pl-7 leading-relaxed">LM393 kéo chân <span class="text-emerald-300 font-mono-tech">DO → 0V (LOW)</span>. Dòng qua cuộn đồng rơ-le sinh từ trường hút cần gạt từ <span class="text-slate-300 font-mono-tech">NC</span> sang đóng <span class="text-emerald-300 font-mono-tech">NO</span>.</p>
+                    </button>
+
+                    <!-- Step 4 -->
+                    <button onclick="setPrincipleStep(4)" id="step-btn-4" class="step-card w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/70 transition-all">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0">4</span>
+                            <span class="text-xs font-semibold text-slate-200">Cấp nguồn Bơm & Phun Sprinkler</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 pl-7 leading-relaxed">Mạch động lực 5V khép kín. Cánh quạt bơm quay đẩy nước áp lực cao qua ống lên <span class="text-cyan-300">Đầu phun Sprinkler</span> dập tắt đám cháy.</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right Inspector Panel: Detailed Anatomical Breakdown -->
+    <aside id="right-panel" class="absolute top-20 right-3 md:right-4 z-20 w-80 max-w-[calc(100vw-24px)] glass-panel rounded-2xl shadow-2xl transition-all duration-300 flex flex-col max-h-[calc(100vh-145px)]">
+        <!-- Header -->
+        <div class="px-4 py-3 border-b border-slate-700/60 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="microscope" class="w-4 h-4 text-orange-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Giải Phẫu Chi Tiết Linh Kiện</h2>
+            </div>
+            <button onclick="toggleRightPanel()" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors" title="Thu gọn/Mở rộng">
+                <i id="right-panel-icon" data-lucide="chevron-up" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Component Selector Pills -->
+        <div id="right-panel-body" class="p-4 overflow-y-auto space-y-3">
+            <div class="flex flex-wrap gap-1.5" id="component-pills">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+            <!-- Selected Component Details Card -->
+            <div id="inspector-content" class="bg-slate-900/75 rounded-xl p-3.5 border border-slate-800 space-y-3">
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <span id="comp-badge" class="inline-block px-2 py-0.5 text-[10px] font-mono-tech font-bold rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 mb-1">CHI TIẾT #1</span>
+                        <h3 id="comp-title" class="text-sm font-bold text-white">Mắt thu hồng ngoại (IR Photodiode)</h3>
+                        <p id="comp-subtitle" class="text-[11px] text-slate-400">Cảm biến quang phổ bước sóng 760nm – 1100nm</p>
+                    </div>
+                </div>
+
+                <!-- Specs Table -->
+                <div id="comp-specs" class="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <!-- Populated via JS -->
+                </div>
+
+                <!-- Anatomy Structure -->
+                <div class="space-y-1">
+                    <h4 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1">
+                        <i data-lucide="layers" class="w-3 h-3"></i> Cấu tạo giải phẫu
+                    </h4>
+                    <p id="comp-anatomy" class="text-xs text-slate-300 leading-relaxed"></p>
+                </div>
+
+                <!-- Working Principle -->
+                <div class="space-y-1">
+                    <h4 class="text-[11px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
+                        <i data-lucide="cpu" class="w-3 h-3"></i> Nguyên lý vật lý & Hoạt động
+                    </h4>
+                    <p id="comp-principle" class="text-xs text-slate-300 leading-relaxed"></p>
+                </div>
+
+                <!-- Role in Fire System -->
+                <div class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-1">
+                    <h4 class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                        <i data-lucide="shield-check" class="w-3 h-3"></i> Vai trò trong hệ PCCC
+                    </h4>
+                    <p id="comp-role" class="text-[11px] text-slate-300 leading-relaxed"></p>
+                </div>
+            </div>
+
+            <!-- Legend for Wires & Signals -->
+            <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-800/80 space-y-1.5">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Chú giải dây dẫn & Tín hiệu 3D</div>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-red-500"></span> Dây nguồn VCC (+5V)</div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-slate-500 border border-slate-400"></span> Dây Mass GND (0V)</div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-amber-400"></span> Tín hiệu số DO</div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-emerald-400"></span> Mạch động lực Bơm</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Toast Notification Box (No alert() used) -->
+    <div id="toast-box" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-opacity duration-300">
+        <div class="glass-panel border-sky-500/40 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-xs font-medium text-white">
+            <i data-lucide="info" class="w-4 h-4 text-sky-400"></i>
+            <span id="toast-msg">Thông báo hệ thống</span>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // ==========================================
+        // 1. DATABASE PHÂN TÍCH GIẢI PHẪU CHI TIẾT
+        // ==========================================
+        const COMPONENTS_DATA = [
+            {
+                id: 'ir_diode',
+                num: 1,
+                shortName: 'Mắt thu IR',
+                title: 'Mắt thu Hồng ngoại (IR Photodiode)',
+                subtitle: 'Cảm biến bán dẫn nhạy bức xạ nhiệt 760nm – 1100nm',
+                cameraTarget: { x: -4.2, y: 1.5, z: 2.2 },
+                cameraPos: { x: -2.0, y: 2.8, z: 5.2 },
+                specs: [
+                    { label: 'Dải bước sóng', value: '760nm – 1100nm' },
+                    { label: 'Góc quét nhận', value: '~ 60 độ' },
+                    { label: 'Vỏ bọc quang học', value: 'Nhựa Epoxy lọc sáng' },
+                    { label: 'Thời gian đáp ứng', value: '< 15 µs (Rất nhanh)' }
+                ],
+                anatomy: 'Gồm lớp tiếp giáp bán dẫn P-N đặt trên đế phản xạ kim loại, bọc trong thấu kính nhựa Epoxy màu đen tím đặc biệt nhằm ngăn ánh sáng nhìn thấy (ánh sáng trắng) và chỉ cho tia hồng ngoại từ ngọn lửa xuyên qua.',
+                principle: 'Hoạt động ở chế độ phân cực ngược. Khi photon hồng ngoại từ đám cháy chiếu vào lớp tiếp giáp P-N, nó giải phóng các cặp electron-lỗ trống, làm dòng rò ngược tăng mạnh tỷ lệ thuận với cường độ ngọn lửa.',
+                role: 'Đóng vai trò "giác quan" phát hiện sớm ngọn lửa ngay khi mới bùng phát, chuyển đổi năng lượng bức xạ nhiệt thành tín hiệu điện áp analog.'
+            },
+            {
+                id: 'lm393',
+                num: 2,
+                shortName: 'IC LM393 & Biến trở',
+                title: 'IC So sánh Điện áp LM393 & Biến trở 10kΩ',
+                subtitle: 'Mạch xử lý tín hiệu & chuẩn hóa mức logic TTL',
+                cameraTarget: { x: -4.8, y: 1.5, z: 1.2 },
+                cameraPos: { x: -3.2, y: 3.4, z: 4.2 },
+                specs: [
+                    { label: 'Vi mạch chính', value: 'Dual Comparator LM393' },
+                    { label: 'Điện áp hoạt động', value: '3.3V – 5V DC' },
+                    { label: 'Biến trở tinh chỉnh', value: '10kΩ (Chỉnh ngưỡng)' },
+                    { label: 'Ngõ ra số (DO)', value: 'Active LOW (0V khi cháy)' }
+                ],
+                anatomy: 'Gồm chip dán SMD 8 chân LM393 chứa 2 bộ khuếch đại thuật toán so sánh độ lợi cao, kết hợp với chiết áp vi chỉnh (màu xanh dương) tạo cầu phân áp chuẩn V_ref, cùng 2 đèn LED chỉ thị nguồn (PWR) và tín hiệu (DO-LED).',
+                principle: 'LM393 liên tục so sánh điện áp từ mắt thu IR (chân IN-) với điện áp ngưỡng đặt bởi biến trở (chân IN+). Khi có lửa, V(IN-) giảm thấp hơn V(IN+), ngõ ra DO lập tức chuyển từ mức CAO (5V) xuống mức THẤP (0V) và làm sáng đèn DO-LED.',
+                role: 'Loại bỏ nhiễu nền, cho phép kỹ thuật viên hiệu chỉnh độ nhạy (khoảng cách phát hiện lửa) và xuất xung kích dứt khoát cho Rơ-le.'
+            },
+            {
+                id: 'relay_coil',
+                num: 3,
+                shortName: 'Cuộn hút Rơ-le',
+                title: 'Cuộn dây điện từ & Lõi sắt từ (Rơ-le 5V)',
+                subtitle: 'Cơ cấu chấp hành điện từ cách ly quang Optocoupler',
+                cameraTarget: { x: -0.5, y: 1.4, z: 1.0 },
+                cameraPos: { x: 1.2, y: 3.2, z: 4.5 },
+                specs: [
+                    { label: 'Điện áp cuộn hút', value: '5V DC (Dòng ~70mA)' },
+                    { label: 'Điện trở cuộn dây', value: '~ 70 Ω (Dây đồng tráng men)' },
+                    { label: 'Cách ly bảo vệ', value: 'Optocoupler + Diode 1N4148' },
+                    { label: 'Thời gian tác động', value: '< 10 ms' }
+                ],
+                anatomy: 'Bên trong lớp vỏ nhựa xanh dương là ống lõi nhựa quấn hàng trăm vòng dây đồng mảnh quanh lõi sắt non (ferrite), đi kèm mạch kích Transistor/Optocoupler và Diode dập xung ngược bảo vệ.',
+                principle: 'Khi chân IN nhận mức LOW (0V) từ cảm biến, dòng điện 5V chạy qua cuộn dây đồng tạo ra từ trường mạnh theo quy tắc nắm tay phải, từ hóa lõi sắt non biến nó thành nam châm điện hút tấm phần ứng (armature) bằng kim loại.',
+                role: 'Chuyển đổi tín hiệu điều khiển công suất cực nhỏ từ cảm biến thành lực cơ học đủ mạnh để đóng ngắt mạch động lực cấp cho máy bơm.'
+            },
+            {
+                id: 'relay_contacts',
+                num: 4,
+                shortName: 'Tiếp điểm COM-NO-NC',
+                title: 'Hệ thống Tiếp điểm Động lực (COM - NO - NC)',
+                subtitle: 'Khối chuyển mạch cơ khí chịu tải 10A - 250VAC / 30VDC',
+                cameraTarget: { x: -0.5, y: 1.5, z: 0.4 },
+                cameraPos: { x: 1.5, y: 2.9, z: 3.8 },
+                specs: [
+                    { label: 'Chân chung', value: 'COM (Common)' },
+                    { label: 'Thường đóng', value: 'NC (Normally Closed)' },
+                    { label: 'Thường mở', value: 'NO (Normally Open)' },
+                    { label: 'Dòng tải tối đa', value: '10A (Bơm mini ~0.4A)' }
+                ],
+                anatomy: 'Gồm cần gạt động gắn lò xo hồi vị nối với chân chung COM, kẹp giữa hai má tiếp điểm tĩnh mạ hợp kim bạc chống hồ quang là NC (bên trên) và NO (bên dưới).',
+                principle: 'Ở trạng thái bình thường, lò xo kéo cần COM chạm vào NC (mạch bơm hở). Khi cuộn hút có điện, lực từ thắng lực lò xo kéo cần COM dập xuống chạm vào NO, khép kín mạch cấp nguồn 5V cho máy bơm.',
+                role: 'Cách ly hoàn toàn mạch điều khiển nhạy cảm khỏi dòng khởi động của động cơ bơm, đảm bảo đóng/cắt an toàn và tin cậy.'
+            },
+            {
+                id: 'water_pump',
+                num: 5,
+                shortName: 'Máy bơm mini 5V',
+                title: 'Máy bơm nước ly tâm chìm mini 5V DC',
+                subtitle: 'Động cơ không chổi than (Brushless) & Buồng cánh quạt',
+                cameraTarget: { x: 3.6, y: 1.1, z: 0.8 },
+                cameraPos: { x: 5.8, y: 2.6, z: 4.5 },
+                specs: [
+                    { label: 'Điện áp định mức', value: '3V – 5V DC (Công suất 2W)' },
+                    { label: 'Lưu lượng bơm', value: '80 – 120 Lít/giờ' },
+                    { label: 'Cột áp đẩy cao', value: 'Tối đa 0.8 – 1.1 mét' },
+                    { label: 'Cơ chế truyền động', value: 'Từ trường vĩnh cửu (Chống nước)' }
+                ],
+                anatomy: 'Gồm 2 khoang tách biệt hoàn toàn bằng nhựa chống thấm: Khoang Stator chứa cuộn dây đồng đổ keo Epoxy chống nước, và khoang thủy lực chứa Rotor nam châm vĩnh cửu gắn liền cánh quạt ly tâm 4 cánh.',
+                principle: 'Khi tiếp điểm NO của rơ-le đóng, dòng điện 5V cấp vào Stator tạo từ trường quay làm Rotor cánh quạt quay tốc độ cao (~3000 vòng/phút). Lực ly tâm văng nước từ tâm ra mép ngoài, tạo áp suất đẩy nước vọt lên ống dẫn.',
+                role: 'Tạo áp lực thủy tĩnh và lưu lượng nước liên tục đưa từ bể chứa lên hệ thống đường ống chữa cháy phía trên.'
+            },
+            {
+                id: 'sprinkler_head',
+                num: 6,
+                shortName: 'Đầu phun Sprinkler',
+                title: 'Đầu phun chữa cháy Sprinkler tự động (Pendent)',
+                subtitle: 'Giải phẫu khung đồng, ống thủy tinh nhiệt & tấm tản nước Deflector',
+                cameraTarget: { x: 1.8, y: 4.5, z: -1.8 },
+                cameraPos: { x: 3.8, y: 4.8, z: 1.6 },
+                specs: [
+                    { label: 'Cấu tạo khung', value: 'Hợp kim đồng thau đúc' },
+                    { label: 'Bóng thủy tinh (Bulb)', value: 'Chứa chất lỏng giãn nở (68°C)' },
+                    { label: 'Tấm tản nước', value: 'Deflector răng cưa 12 rãnh' },
+                    { label: 'Kiểu phun', value: 'Phun hướng xuống (Pendent)' }
+                ],
+                anatomy: 'Gồm 4 bộ phận chính: (1) Thân ren đồng nối ống nước, (2) Nút chặn van áp lực cao, (3) Ống thủy tinh cảm nhiệt chứa dung dịch màu đỏ cam có bọt khí nhỏ, và (4) Tấm tản nước hình đĩa răng cưa (Deflector) ở đáy.',
+                principle: 'Trong hệ PCCC thực tế, khi nhiệt độ đạt 68°C, chất lỏng trong bóng thủy tinh giãn nở làm vỡ ống kính, giải phóng nút chặn. Trong mô hình kết hợp này, áp lực nước từ máy bơm kích hoạt đẩy mở van phun, tia nước đập vào đĩa răng cưa Deflector tạo thành màn mưa hình nón bao phủ toàn bộ vùng cháy.',
+                role: 'Phân tán dòng nước áp lực thành các hạt sương/tia đồng đều diện rộng, hạ nhiệt độ vùng cháy dưới điểm bốc cháy và ngăn oxy tiếp xúc đám cháy.'
+            }
+        ];
+
+        // ==========================================
+        // 2. STATE MANAGEMENT
+        // ==========================================
+        const state = {
+            fireOn: false,
+            fireDistance: 25, // cm (threshold <= 45cm)
+            isTriggered: false,
+            isExploded: false,
+            explodeProgress: 0,
+            isXray: false,
+            showLabels: true,
+            currentStep: 1,
+            selectedComponentId: 'ir_diode',
+            armatureAngle: 0, // 0 = NC, 1 = NO
+            impellerAngle: 0,
+            sprinklerOpen: 0
+        };
+
+        // ==========================================
+        // 3. THREE.JS SCENE SETUP
+        // ==========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+        scene.fog = new THREE.FogExp2(0x0b0f19, 0.032);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(1.5, 5.5, 11.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.maxPolarAngle = Math.PI / 2 - 0.03;
+        controls.minDistance = 2.2;
+        controls.maxDistance = 22;
+        controls.target.set(0.2, 2.0, -0.3);
+
+        // Camera smooth transition target
+        let camTween = null;
+
+        // ==========================================
+        // 4. LIGHTING & LAB ENVIRONMENT
+        // ==========================================
+        const ambientLight = new THREE.AmbientLight(0x94a3b8, 0.65);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+        dirLight.position.set(6, 12, 8);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 30;
+        const d = 9;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
+        rimLight.position.set(-8, 6, -6);
+        scene.add(rimLight);
+
+        // Dynamic Fire Point Light
+        const fireLight = new THREE.PointLight(0xff6b00, 0, 10);
+        fireLight.position.set(1.8, 1.4, -1.8);
+        scene.add(fireLight);
+
+        // Lab Workbench Floor & Grid
+        const tableGeo = new THREE.BoxGeometry(16, 0.4, 10);
+        const tableMat = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.7,
+            metalness: 0.2
+        });
+        const table = new THREE.Mesh(tableGeo, tableMat);
+        table.position.set(0, -0.2, -0.5);
+        table.receiveShadow = true;
+        scene.add(table);
+
+        const gridHelper = new THREE.GridHelper(16, 32, 0x334155, 0x1e293b);
+        gridHelper.position.set(0, 0.01, -0.5);
+        scene.add(gridHelper);
+
+        // ==========================================
+        // 5. MATERIALS LIBRARY (Standard & X-Ray)
+        // ==========================================
+        const mats = {
+            pcbRed: new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.4, metalness: 0.2 }),
+            pcbBlue: new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4, metalness: 0.2 }),
+            relayShell: new THREE.MeshPhysicalMaterial({
+                color: 0x0284c7,
+                roughness: 0.25,
+                metalness: 0.05,
+                transparent: true,
+                opacity: 0.96,
+                transmission: 0.0
+            }),
+            pumpShell: new THREE.MeshPhysicalMaterial({
+                color: 0x1e293b,
+                roughness: 0.35,
+                metalness: 0.2,
+                transparent: true,
+                opacity: 0.96
+            }),
+            brass: new THREE.MeshStandardMaterial({
+                color: 0xd97706,
+                roughness: 0.28,
+                metalness: 0.85,
+                transparent: true,
+                opacity: 1.0
+            }),
+            copper: new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.3, metalness: 0.85 }),
+            chrome: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 }),
+            blackPlastic: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.1 }),
+            irLens: new THREE.MeshPhysicalMaterial({
+                color: 0x1e1b4b,
+                roughness: 0.1,
+                metalness: 0.1,
+                clearcoat: 1.0
+            }),
+            glass: new THREE.MeshPhysicalMaterial({
+                color: 0xe0f2fe,
+                roughness: 0.05,
+                metalness: 0.0,
+                transparent: true,
+                opacity: 0.28,
+                side: THREE.DoubleSide
+            }),
+            water: new THREE.MeshPhysicalMaterial({
+                color: 0x0ea5e9,
+                roughness: 0.1,
+                metalness: 0.0,
+                transparent: true,
+                opacity: 0.55
+            }),
+            pipe: new THREE.MeshPhysicalMaterial({
+                color: 0xbae6fd,
+                roughness: 0.15,
+                transparent: true,
+                opacity: 0.45
+            }),
+            ledGreen: new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.8 }),
+            ledRedOff: new THREE.MeshStandardMaterial({ color: 0x7f1d1d, emissive: 0x000000, emissiveIntensity: 0 }),
+            ledRedOn: new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xff2222, emissiveIntensity: 2.0 }),
+            bulbLiquid: new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 0.5 })
+        };
+
+        // Store explodable parts: { mesh, basePos, explodeOffset }
+        const explodableParts = [];
+        function registerExplodable(mesh, dx, dy, dz) {
+            explodableParts.push({
+                mesh: mesh,
+                basePos: mesh.position.clone(),
+                offset: new THREE.Vector3(dx, dy, dz)
+            });
+        }
+
+        // Store dashed guide lines shown when exploded
+        const explodeGuideLines = [];
+        function addGuideLine(p1, p2) {
+            const geom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const mat = new THREE.LineDashedMaterial({
+                color: 0x38bdf8,
+                dashSize: 0.12,
+                gapSize: 0.08,
+                transparent: true,
+                opacity: 0
+            });
+            const line = new THREE.Line(geom, mat);
+            line.computeLineDistances();
+            scene.add(line);
+            explodeGuideLines.push(line);
+        }
+
+        // ==========================================
+        // 6. BUILD 3D ANATOMICAL MODELS
+        // ==========================================
+
+        // --- A. MODULE CẢM BIẾN LỬA HỒNG NGOẠI (KY-026) ---
+        const sensorGroup = new THREE.Group();
+        sensorGroup.position.set(-4.5, 1.2, 1.5);
+        // Angle sensor toward fire area
+        sensorGroup.rotation.y = 0.55;
+        scene.add(sensorGroup);
+
+        // Stand / Mounting Pillar
+        const sensorStand = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.35, 1.2, 16), mats.blackPlastic);
+        sensorStand.position.set(0, -0.6, 0);
+        sensorStand.castShadow = true;
+        sensorGroup.add(sensorStand);
+
+        // PCB Board
+        const sensorPCB = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.95), mats.pcbRed);
+        sensorPCB.castShadow = true;
+        sensorGroup.add(sensorPCB);
+
+        // IR Photodiode (Front facing fire)
+        const irDiodeGroup = new THREE.Group();
+        irDiodeGroup.position.set(1.05, 0.05, 0);
+        sensorGroup.add(irDiodeGroup);
+
+        const diodeLeads = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.18), mats.chrome);
+        diodeLeads.position.set(-0.15, 0, 0);
+        irDiodeGroup.add(diodeLeads);
+
+        const diodeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.25, 20), mats.irLens);
+        diodeBody.rotation.z = -Math.PI / 2;
+        diodeBody.position.set(0.08, 0, 0);
+        irDiodeGroup.add(diodeBody);
+
+        const diodeTip = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), mats.irLens);
+        diodeTip.position.set(0.2, 0, 0);
+        irDiodeGroup.add(diodeTip);
+        registerExplodable(irDiodeGroup, 0.7, 0.2, 0);
+
+        // LM393 Comparator Chip (Explodable upward)
+        const lm393Group = new THREE.Group();
+        lm393Group.position.set(0.1, 0.08, 0.15);
+        sensorGroup.add(lm393Group);
+
+        const lmChip = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.09, 0.28), mats.blackPlastic);
+        lm393Group.add(lmChip);
+        for (let i = -1.5; i <= 1.5; i += 1) {
+            const pin1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.08), mats.chrome);
+            pin1.position.set(i * 0.08, -0.02, 0.16);
+            lm393Group.add(pin1);
+            const pin2 = pin1.clone();
+            pin2.position.z = -0.16;
+            lm393Group.add(pin2);
+        }
+        registerExplodable(lm393Group, 0, 0.85, 0);
+
+        // Potentiometer (Sensitivity trimmer)
+        const potGroup = new THREE.Group();
+        potGroup.position.set(-0.35, 0.14, -0.18);
+        sensorGroup.add(potGroup);
+        const potBox = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.32), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+        potGroup.add(potBox);
+        const potScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 16), mats.brass);
+        potScrew.position.y = 0.12;
+        potGroup.add(potScrew);
+        registerExplodable(potGroup, 0, 0.65, -0.3);
+
+        // PWR LED (Green) & DO-LED (Red)
+        const pwrLed = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.08), mats.ledGreen);
+        pwrLed.position.set(-0.55, 0.07, 0.25);
+        sensorGroup.add(pwrLed);
+
+        const doLed = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.08), mats.ledRedOff);
+        doLed.position.set(-0.35, 0.07, 0.25);
+        sensorGroup.add(doLed);
+
+        // Header Pins (VCC, GND, DO)
+        const headerBase = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.55), mats.blackPlastic);
+        headerBase.position.set(-0.85, 0.1, 0);
+        sensorGroup.add(headerBase);
+        for (let i = -1; i <= 1; i++) {
+            const hPin = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 0.04), mats.chrome);
+            hPin.position.set(-0.95, 0.1, i * 0.16);
+            sensorGroup.add(hPin);
+        }
+
+        // --- B. MODULE RƠ-LE 5V (1 KÊNH - GIẢI PHẪU BÊN TRONG) ---
+        const relayModuleGroup = new THREE.Group();
+        relayModuleGroup.position.set(-0.5, 0.1, 1.0);
+        scene.add(relayModuleGroup);
+
+        // Relay Module PCB
+        const relayPCB = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 1.6), mats.pcbBlue);
+        relayPCB.position.y = 0.05;
+        relayPCB.castShadow = true;
+        relayModuleGroup.add(relayPCB);
+
+        // Optocoupler & Freewheeling Diode on PCB
+        const optoChip = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.26), mats.blackPlastic);
+        optoChip.position.set(-0.75, 0.16, 0.35);
+        relayModuleGroup.add(optoChip);
+
+        const flybackDiode = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.24, 12), new THREE.MeshStandardMaterial({ color: 0xf97316 }));
+        flybackDiode.rotation.z = Math.PI / 2;
+        flybackDiode.position.set(-0.75, 0.15, -0.35);
+        relayModuleGroup.add(flybackDiode);
+
+        // Screw Terminals (COM, NO, NC) on Right Side of Relay PCB
+        const terminalBlock = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 1.25), new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.4 }));
+        terminalBlock.position.set(1.02, 0.32, 0);
+        relayModuleGroup.add(terminalBlock);
+
+        // Relay Internal Mechanism Group
+        const relayCoreGroup = new THREE.Group();
+        relayCoreGroup.position.set(0.05, 0.12, 0);
+        relayModuleGroup.add(relayCoreGroup);
+
+        // Relay Base Plate
+        const relayBase = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.08, 1.05), mats.blackPlastic);
+        relayBase.position.y = 0.04;
+        relayCoreGroup.add(relayBase);
+
+        // Copper Electromagnetic Coil & Iron Core
+        const coilAssembly = new THREE.Group();
+        coilAssembly.position.set(-0.22, 0.48, 0);
+        relayCoreGroup.add(coilAssembly);
+
+        const bobbinTop = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.05, 24), mats.blackPlastic);
+        bobbinTop.rotation.z = Math.PI / 2;
+        bobbinTop.position.x = 0.28;
+        coilAssembly.add(bobbinTop);
+
+        const bobbinBot = bobbinTop.clone();
+        bobbinBot.position.x = -0.28;
+        coilAssembly.add(bobbinBot);
+
+        const copperWindings = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.52, 24), mats.copper);
+        copperWindings.rotation.z = Math.PI / 2;
+        coilAssembly.add(copperWindings);
+
+        const ironCore = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.66, 20), mats.chrome);
+        ironCore.rotation.z = Math.PI / 2;
+        coilAssembly.add(ironCore);
+        registerExplodable(coilAssembly, -0.5, 0.6, 0);
+
+        // Movable Armature & Contacts (COM, NC, NO)
+        const contactsAssembly = new THREE.Group();
+        contactsAssembly.position.set(0.35, 0.48, 0);
+        relayCoreGroup.add(contactsAssembly);
+
+        // Stationary NC Contact (Upper)
+        const ncPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.25), mats.brass);
+        ncPost.position.set(0.05, 0.24, 0);
+        contactsAssembly.add(ncPost);
+
+        // Stationary NO Contact (Lower)
+        const noPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.25), mats.brass);
+        noPost.position.set(0.05, -0.22, 0);
+        contactsAssembly.add(noPost);
+
+        // Pivot Armature Lever (COM)
+        const armaturePivot = new THREE.Group();
+        armaturePivot.position.set(-0.18, 0.02, 0);
+        contactsAssembly.add(armaturePivot);
+
+        const armatureBlade = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.22), mats.chrome);
+        armatureBlade.position.set(0.16, 0.12, 0);
+        armaturePivot.add(armatureBlade);
+
+        // Vertical Iron Plate attracted by Coil
+        const armatureVertical = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46, 0.34), mats.chrome);
+        armatureVertical.position.set(-0.02, -0.02, 0);
+        armaturePivot.add(armatureVertical);
+        registerExplodable(contactsAssembly, 0.55, 0.6, 0);
+
+        // Blue Outer Relay Cover (Lifts up on Explode, turns transparent on X-Ray)
+        const relayCover = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.98, 1.12), mats.relayShell);
+        relayCover.position.set(0.05, 0.62, 0);
+        relayCover.castShadow = true;
+        relayModuleGroup.add(relayCover);
+        registerExplodable(relayCover, 0, 1.85, 0);
+
+        // --- C. BỂ CHỨA NƯỚC & MÁY BƠM MINI 5V ---
+        const tankGroup = new THREE.Group();
+        tankGroup.position.set(3.8, 0, 0.8);
+        scene.add(tankGroup);
+
+        // Transparent Water Tank Walls
+        const tankW = 2.4, tankH = 1.9, tankD = 2.0;
+        const tankBase = new THREE.Mesh(new THREE.BoxGeometry(tankW, 0.1, tankD), mats.blackPlastic);
+        tankBase.position.y = 0.05;
+        tankGroup.add(tankBase);
+
+        const tankWalls = new THREE.Mesh(new THREE.BoxGeometry(tankW, tankH, tankD), mats.glass);
+        tankWalls.position.y = tankH / 2 + 0.05;
+        tankGroup.add(tankWalls);
+
+        // Water Volume inside Tank
+        const waterLevelMesh = new THREE.Mesh(new THREE.BoxGeometry(tankW - 0.12, 1.35, tankD - 0.12), mats.water);
+        waterLevelMesh.position.y = 0.75;
+        tankGroup.add(waterLevelMesh);
+
+        // Mini Submersible Pump 5V inside Tank
+        const pumpGroup = new THREE.Group();
+        pumpGroup.position.set(-0.2, 0.55, 0);
+        tankGroup.add(pumpGroup);
+
+        // Pump Motor Stator Body
+        const pumpMotorBody = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.75, 24), mats.pumpShell);
+        pumpMotorBody.rotation.z = Math.PI / 2;
+        pumpMotorBody.position.x = -0.25;
+        pumpGroup.add(pumpMotorBody);
+
+        // Internal Copper Stator Coils (Visible in X-Ray / Explode)
+        const pumpStatorCoils = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.5, 16), mats.copper);
+        pumpStatorCoils.rotation.z = Math.PI / 2;
+        pumpStatorCoils.position.x = -0.25;
+        pumpGroup.add(pumpStatorCoils);
+
+        // Impeller Chamber Housing (Front cap)
+        const impellerHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.28, 24), mats.pumpShell);
+        impellerHousing.rotation.z = Math.PI / 2;
+        impellerHousing.position.x = 0.28;
+        pumpGroup.add(impellerHousing);
+        registerExplodable(impellerHousing, 0.9, 0.4, 0);
+
+        // Rotating 4-Blade Impeller Rotor
+        const impellerGroup = new THREE.Group();
+        impellerGroup.position.set(0.24, 0, 0);
+        pumpGroup.add(impellerGroup);
+
+        const impellerHub = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.22, 16), mats.chrome);
+        impellerHub.rotation.z = Math.PI / 2;
+        impellerGroup.add(impellerHub);
+
+        for (let b = 0; b < 4; b++) {
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.32, 0.04), new THREE.MeshStandardMaterial({ color: 0x38bdf8 }));
+            blade.rotation.x = (b * Math.PI) / 2;
+            impellerGroup.add(blade);
+        }
+        registerExplodable(impellerGroup, 0.45, 0.2, 0);
+
+        // Pump Outlet Nozzle pointing UP
+        const pumpNozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.35, 16), mats.pumpShell);
+        pumpNozzle.position.set(0.28, 0.5, 0);
+        pumpGroup.add(pumpNozzle);
+
+        // --- D. ĐƯỜNG ỐNG CẤP NƯỚC & ĐẦU PHUN CHỮA CHÁY SPRINKLER ---
+        // Support Frame / Ceiling Pipe Bracket
+        const pipeSupportPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 5.2, 16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 }));
+        pipeSupportPole.position.set(4.1, 2.6, -1.8);
+        pipeSupportPole.castShadow = true;
+        scene.add(pipeSupportPole);
+
+        const ceilingArm = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 }));
+        ceilingArm.position.set(2.9, 5.15, -1.8);
+        scene.add(ceilingArm);
+
+        // Water Pipe Path from Pump Outlet to Sprinkler Head
+        const pipePoints = [
+            new THREE.Vector3(3.88, 1.15, 0.8),
+            new THREE.Vector3(3.88, 3.2, 0.8),
+            new THREE.Vector3(3.88, 4.95, -0.5),
+            new THREE.Vector3(3.88, 4.95, -1.8),
+            new THREE.Vector3(1.8, 4.95, -1.8),
+            new THREE.Vector3(1.8, 4.72, -1.8)
+        ];
+        const pipeCurve = new THREE.CatmullRomCurve3(pipePoints, false, 'catmullrom', 0.15);
+        const outerPipe = new THREE.Mesh(new THREE.TubeGeometry(pipeCurve, 64, 0.095, 16, false), mats.pipe);
+        scene.add(outerPipe);
+
+        // Inner Water Flow Stream inside Pipe (Glows/animates when pump is ON)
+        const innerWaterPipeMat = new THREE.MeshStandardMaterial({
+            color: 0x0ea5e9,
+            emissive: 0x0284c7,
+            emissiveIntensity: 0.2,
+            transparent: true,
+            opacity: 0.25
+        });
+        const innerWaterPipe = new THREE.Mesh(new THREE.TubeGeometry(pipeCurve, 64, 0.065, 12, false), innerWaterPipeMat);
+        scene.add(innerWaterPipe);
+
+        // --- ANATOMICAL SPRINKLER HEAD ASSEMBLY (Over Fire at x=1.8, y=4.5, z=-1.8) ---
+        const sprinklerGroup = new THREE.Group();
+        sprinklerGroup.position.set(1.8, 4.55, -1.8);
+        scene.add(sprinklerGroup);
+
+        // 1. Threaded Brass Inlet & Body
+        const sprinklerBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.15, 0.28, 20), mats.brass);
+        sprinklerBody.position.y = 0.08;
+        sprinklerGroup.add(sprinklerBody);
+
+        // 2. Brass Frame Arms (2 curved struts)
+        const sprinklerFrame = new THREE.Group();
+        sprinklerGroup.add(sprinklerFrame);
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.07), mats.brass);
+        armL.position.set(-0.22, -0.25, 0);
+        armL.rotation.z = -0.22;
+        sprinklerFrame.add(armL);
+
+        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.07), mats.brass);
+        armR.position.set(0.22, -0.25, 0);
+        armR.rotation.z = 0.22;
+        sprinklerFrame.add(armR);
+
+        const frameBoss = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.12, 16), mats.brass);
+        frameBoss.position.y = -0.52;
+        sprinklerFrame.add(frameBoss);
+        registerExplodable(sprinklerFrame, 0.45, -0.15, 0);
+
+        // 3. Valve Plug / Cap (Blocks water until activated)
+        const valveCap = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16), mats.chrome);
+        valveCap.position.y = -0.08;
+        sprinklerGroup.add(valveCap);
+        registerExplodable(valveCap, -0.45, -0.05, 0);
+
+        // 4. Thermal Glass Bulb (Red/Orange expansion liquid)
+        const glassBulbGroup = new THREE.Group();
+        glassBulbGroup.position.y = -0.28;
+        sprinklerGroup.add(glassBulbGroup);
+
+        const glassCapsule = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.34, 16), mats.glass);
+        glassBulbGroup.add(glassCapsule);
+
+        const thermalLiquid = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.28, 12), mats.bulbLiquid);
+        glassBulbGroup.add(thermalLiquid);
+        registerExplodable(glassBulbGroup, -0.5, -0.35, 0.25);
+
+        // 5. Serrated Deflector Plate (Bottom water dispersion disk)
+        const deflectorGroup = new THREE.Group();
+        deflectorGroup.position.y = -0.62;
+        sprinklerGroup.add(deflectorGroup);
+
+        const deflectorDisk = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.03, 24), mats.brass);
+        deflectorGroup.add(deflectorDisk);
+        // Serrated teeth around deflector
+        for (let t = 0; t < 12; t++) {
+            const angle = (t * Math.PI * 2) / 12;
+            const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.12), mats.brass);
+            tooth.position.set(Math.cos(angle) * 0.35, -0.01, Math.sin(angle) * 0.35);
+            tooth.rotation.y = -angle;
+            deflectorGroup.add(tooth);
+        }
+        registerExplodable(deflectorGroup, 0, -0.75, 0);
+
+        // --- E. NGUỒN LỬA MÔ PHỎNG & SÓNG HỒNG NGOẠI (IR) ---
+        const fireBaseGroup = new THREE.Group();
+        fireBaseGroup.position.set(1.8, 0, -1.8);
+        scene.add(fireBaseGroup);
+
+        // Fire Tray / Burner Bowl
+        const burnerTray = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.75, 0.18, 24), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6 }));
+        burnerTray.position.y = 0.09;
+        fireBaseGroup.add(burnerTray);
+
+        // Glowing Coals / Fuel Bed
+        const fuelBed = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.08, 20), new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0x7c2d12, emissiveIntensity: 0.4 }));
+        fuelBed.position.y = 0.18;
+        fireBaseGroup.add(fuelBed);
+
+        // Animated Fire Particles
+        const fireParticles = [];
+        const fireParticleCount = 36;
+        const fireGeom = new THREE.SphereGeometry(0.14, 10, 10);
+        for (let i = 0; i < fireParticleCount; i++) {
+            const pMat = new THREE.MeshBasicMaterial({
+                color: i % 2 === 0 ? 0xff6b00 : 0xffbe0b,
+                transparent: true,
+                opacity: 0
+            });
+            const pMesh = new THREE.Mesh(fireGeom, pMat);
+            fireBaseGroup.add(pMesh);
+            fireParticles.push({
+                mesh: pMesh,
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.8 + Math.random() * 0.8,
+                radius: Math.random() * 0.32,
+                angle: Math.random() * Math.PI * 2
+            });
+        }
+
+        // Infrared (IR) Radiation Wave Rings from Fire toward Sensor
+        const irWaves = [];
+        for (let w = 0; w < 4; w++) {
+            const ringGeom = new THREE.RingGeometry(0.2, 0.26, 32, 1, -Math.PI / 4, Math.PI / 2);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0xf43f5e,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0
+            });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.position.set(1.8, 0.85, -1.8);
+            // Point toward sensor (-4.5, 1.2, 1.5)
+            ring.lookAt(-4.5, 1.2, 1.5);
+            scene.add(ring);
+            irWaves.push({ mesh: ring, offset: w * 0.25 });
+        }
+
+        // --- F. SPRINKLER WATER SPRAY PARTICLES ---
+        const sprayParticles = [];
+        const sprayCount = 110;
+        const dropGeom = new THREE.SphereGeometry(0.035, 6, 6);
+        const dropMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.85
+        });
+        for (let s = 0; s < sprayCount; s++) {
+            const drop = new THREE.Mesh(dropGeom, dropMat);
+            drop.visible = false;
+            scene.add(drop);
+            sprayParticles.push({
+                mesh: drop,
+                progress: Math.random(),
+                angle: Math.random() * Math.PI * 2,
+                spread: 0.35 + Math.random() * 0.85,
+                speed: 0.7 + Math.random() * 0.5
+            });
+        }
+
+        // --- G. DÂY DẪN ĐIỆN & HẠT ELECTRON CHUYỂN ĐỘNG ---
+        const wires = [];
+        function createWire(points, colorHex, circuitType) {
+            const curve = new THREE.CatmullRomCurve3(points);
+            const wireGeom = new THREE.TubeGeometry(curve, 36, 0.032, 8, false);
+            const wireMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
+            const wireMesh = new THREE.Mesh(wireGeom, wireMat);
+            scene.add(wireMesh);
+
+            // Signal/Electron Particles moving along wire
+            const electrons = [];
+            const eCount = 5;
+            const eGeom = new THREE.SphereGeometry(0.065, 8, 8);
+            const eMat = new THREE.MeshBasicMaterial({
+                color: circuitType === 'power' ? 0xfef08a : (circuitType === 'signal' ? 0x38bdf8 : 0x34d399)
+            });
+            for (let i = 0; i < eCount; i++) {
+                const eMesh = new THREE.Mesh(eGeom, eMat);
+                eMesh.visible = false;
+                scene.add(eMesh);
+                electrons.push({ mesh: eMesh, t: i / eCount });
+            }
+            wires.push({ curve, electrons, circuitType });
+        }
+
+        // 1. Sensor VCC (Red)
+        createWire([
+            new THREE.Vector3(-5.3, 1.3, 1.35),
+            new THREE.Vector3(-5.6, 0.3, 1.35),
+            new THREE.Vector3(-2.6, 0.1, 1.6),
+            new THREE.Vector3(-1.8, 0.15, 1.3)
+        ], 0xef4444, 'always');
+
+        // 2. Sensor GND (Black/Slate)
+        createWire([
+            new THREE.Vector3(-5.3, 1.3, 1.5),
+            new THREE.Vector3(-5.5, 0.25, 1.5),
+            new THREE.Vector3(-2.6, 0.08, 1.45),
+            new THREE.Vector3(-1.8, 0.15, 1.1)
+        ], 0x334155, 'always');
+
+        // 3. Sensor DO Signal -> Relay IN (Yellow)
+        createWire([
+            new THREE.Vector3(-5.3, 1.3, 1.65),
+            new THREE.Vector3(-5.4, 0.2, 1.75),
+            new THREE.Vector3(-2.6, 0.12, 1.25),
+            new THREE.Vector3(-1.8, 0.15, 0.9)
+        ], 0xfacc15, 'signal');
+
+        // 4. Relay NO -> Pump Positive Power (Emerald Green)
+        createWire([
+            new THREE.Vector3(0.75, 0.32, 0.25),
+            new THREE.Vector3(1.6, 0.12, 0.35),
+            new THREE.Vector3(2.5, 0.12, 0.6),
+            new THREE.Vector3(2.8, 2.0, 0.6),
+            new THREE.Vector3(3.3, 0.75, 0.75)
+        ], 0x10b981, 'power');
+
+        // 5. Pump Negative Return GND (Dark Gray)
+        createWire([
+            new THREE.Vector3(3.3, 0.65, 0.85),
+            new THREE.Vector3(2.7, 2.0, 0.85),
+            new THREE.Vector3(2.4, 0.1, 0.85),
+            new THREE.Vector3(0.75, 0.28, -0.25)
+        ], 0x475569, 'power');
+
+        // Register Explode Guide Lines
+        addGuideLine(new THREE.Vector3(-0.45, 0.6, 1.0), new THREE.Vector3(-0.45, 2.45, 1.0)); // Relay cover
+        addGuideLine(new THREE.Vector3(1.8, 4.55, -1.8), new THREE.Vector3(1.8, 3.8, -1.8)); // Sprinkler deflector
+        addGuideLine(new THREE.Vector3(3.6, 0.55, 0.8), new THREE.Vector3(4.5, 0.95, 0.8)); // Pump impeller
+
+        // ==========================================
+        // 7. 3D HOTSPOTS (ANNOTATIONS) SYSTEM
+        // ==========================================
+        const hotspotsLayer = document.getElementById('hotspots-layer');
+        const hotspotAnchors = [
+            { id: 'ir_diode', num: 1, label: 'Mắt thu IR', pos: new THREE.Vector3(-3.6, 1.45, 2.05) },
+            { id: 'lm393', num: 2, label: 'IC LM393 & Biến trở', pos: new THREE.Vector3(-4.5, 1.55, 1.4) },
+            { id: 'relay_coil', num: 3, label: 'Cuộn hút Rơ-le 5V', pos: new THREE.Vector3(-0.7, 0.85, 1.0) },
+            { id: 'relay_contacts', num: 4, label: 'Tiếp điểm COM-NO-NC', pos: new THREE.Vector3(-0.1, 0.85, 0.7) },
+            { id: 'water_pump', num: 5, label: 'Máy bơm mini 5V', pos: new THREE.Vector3(3.6, 0.85, 0.8) },
+            { id: 'sprinkler_head', num: 6, label: 'Đầu phun Sprinkler', pos: new THREE.Vector3(1.8, 4.35, -1.8) }
+        ];
+
+        const hotspotElements = {};
+        hotspotAnchors.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'hotspot pointer-events-auto';
+            el.innerHTML = `
+                <div class="hotspot-pulse"></div>
+                <div class="hotspot-badge">${item.num}</div>
+                <div class="hotspot-label">${item.label}</div>
+            `;
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectComponent(item.id, true);
+            });
+            hotspotsLayer.appendChild(el);
+            hotspotElements[item.id] = { el, pos: item.pos };
+        });
+
+        function updateHotspotsPosition() {
+            const tempV = new THREE.Vector3();
+            hotspotAnchors.forEach(item => {
+                const hObj = hotspotElements[item.id];
+                if (!state.showLabels) {
+                    hObj.el.style.display = 'none';
+                    return;
+                }
+                tempV.copy(hObj.pos);
+                tempV.project(camera);
+
+                // Hide if behind camera
+                if (tempV.z > 1) {
+                    hObj.el.style.display = 'none';
+                    return;
+                }
+                hObj.el.style.display = 'block';
+                const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
+                hObj.el.style.left = `${x}px`;
+                hObj.el.style.top = `${y}px`;
+            });
+        }
+
+        // ==========================================
+        // 8. UI INTERACTIONS & SIMULATION LOGIC
+        // ==========================================
+        function showToast(msg) {
+            const toast = document.getElementById('toast-box');
+            document.getElementById('toast-msg').textContent = msg;
+            toast.style.opacity = '1';
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 2600);
+        }
+
+        // Populate Component Pills in Right Inspector
+        const pillsContainer = document.getElementById('component-pills');
+        COMPONENTS_DATA.forEach(comp => {
+            const btn = document.createElement('button');
+            btn.id = `pill-${comp.id}`;
+            btn.className = 'px-2 py-1 rounded-lg text-[11px] font-medium border transition-all flex items-center gap-1';
+            btn.innerHTML = `<span class="font-mono-tech font-bold">#${comp.num}</span> ${comp.shortName}`;
+            btn.onclick = () => selectComponent(comp.id, true);
+            pillsContainer.appendChild(btn);
+        });
+
+        function selectComponent(compId, moveCamera = false) {
+            state.selectedComponentId = compId;
+            const comp = COMPONENTS_DATA.find(c => c.id === compId);
+            if (!comp) return;
+
+            // Update pills styling
+            COMPONENTS_DATA.forEach(c => {
+                const pill = document.getElementById(`pill-${c.id}`);
+                if (c.id === compId) {
+                    pill.className = 'px-2 py-1 rounded-lg text-[11px] font-semibold border border-orange-500/70 bg-orange-500/20 text-orange-200 transition-all flex items-center gap-1';
+                } else {
+                    pill.className = 'px-2 py-1 rounded-lg text-[11px] font-medium border border-slate-700/80 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition-all flex items-center gap-1';
+                }
+            });
+
+            // Update hotspots active state
+            Object.keys(hotspotElements).forEach(k => {
+                hotspotElements[k].el.classList.toggle('active', k === compId);
+            });
+
+            // Update Inspector Content
+            document.getElementById('comp-badge').textContent = `CHI TIẾT #${comp.num}`;
+            document.getElementById('comp-title').textContent = comp.title;
+            document.getElementById('comp-subtitle').textContent = comp.subtitle;
+            document.getElementById('comp-anatomy').textContent = comp.anatomy;
+            document.getElementById('comp-principle').textContent = comp.principle;
+            document.getElementById('comp-role').textContent = comp.role;
+
+            const specsContainer = document.getElementById('comp-specs');
+            specsContainer.innerHTML = comp.specs.map(s => `
+                <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800/80">
+                    <div class="text-[10px] text-slate-400">${s.label}</div>
+                    <div class="font-mono-tech font-semibold text-slate-200 truncate" title="${s.value}">${s.value}</div>
+                </div>
+            `).join('');
+
+            // Automatically enable X-Ray if user inspects internal relay/pump/sprinkler
+            if (['relay_coil', 'relay_contacts', 'water_pump'].includes(compId) && !state.isXray && !state.isExploded) {
+                toggleXray(true);
+                showToast('Tự động bật chế độ Xuyên thấu (X-Ray) để quan sát cấu tạo bên trong');
+            }
+
+            if (moveCamera && comp.cameraPos && comp.cameraTarget) {
+                smoothMoveCamera(comp.cameraPos, comp.cameraTarget);
+            }
+        }
+
+        function smoothMoveCamera(pos, target) {
+            camTween = {
+                startPos: camera.position.clone(),
+                endPos: new THREE.Vector3(pos.x, pos.y, pos.z),
+                startTarget: controls.target.clone(),
+                endTarget: new THREE.Vector3(target.x, target.y, target.z),
+                progress: 0
+            };
+        }
+
+        function setCameraPreset(preset) {
+            document.querySelectorAll('.cam-preset-btn').forEach(b => {
+                b.className = 'cam-preset-btn px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 text-slate-300 hover:bg-slate-800 transition-all';
+            });
+            event.currentTarget.className = 'cam-preset-btn active px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap flex items-center gap-1.5 bg-sky-500/25 text-sky-200 border border-sky-400/40 transition-all';
+
+            if (preset === 'overview') {
+                smoothMoveCamera({ x: 1.5, y: 5.5, z: 11.5 }, { x: 0.2, y: 2.0, z: -0.3 });
+            } else if (preset === 'sensor') {
+                smoothMoveCamera({ x: -2.2, y: 3.1, z: 5.4 }, { x: -4.4, y: 1.4, z: 1.5 });
+                selectComponent('ir_diode', false);
+            } else if (preset === 'relay') {
+                if (!state.isXray) toggleXray(true);
+                smoothMoveCamera({ x: 1.2, y: 3.1, z: 4.3 }, { x: -0.4, y: 0.9, z: 0.9 });
+                selectComponent('relay_coil', false);
+            } else if (preset === 'sprinkler') {
+                smoothMoveCamera({ x: 4.8, y: 4.6, z: 3.6 }, { x: 2.5, y: 3.1, z: -0.9 });
+                selectComponent('sprinkler_head', false);
+            }
+        }
+
+        function toggleExplode() {
+            state.isExploded = !state.isExploded;
+            const btn = document.getElementById('btn-explode');
+            if (state.isExploded) {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-sky-600/40 text-sky-100 border border-sky-400';
+                showToast('Đã bóc tách cấu trúc các cụm linh kiện 3D');
+            } else {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60';
+                showToast('Đã lắp ráp lại nguyên trạng');
+            }
+        }
+
+        function toggleXray(forceState) {
+            state.isXray = typeof forceState === 'boolean' ? forceState : !state.isXray;
+            const btn = document.getElementById('btn-xray');
+            if (state.isXray) {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-emerald-600/40 text-emerald-100 border border-emerald-400';
+                mats.relayShell.opacity = 0.24;
+                mats.pumpShell.opacity = 0.25;
+                mats.brass.opacity = 0.45;
+            } else {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60';
+                mats.relayShell.opacity = 0.96;
+                mats.pumpShell.opacity = 0.96;
+                mats.brass.opacity = 1.0;
+            }
+        }
+
+        function toggleLabels() {
+            state.showLabels = !state.showLabels;
+            const btn = document.getElementById('btn-labels');
+            if (state.showLabels) {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-sky-600/30 text-sky-200 border border-sky-500/50';
+            } else {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all bg-slate-800/80 text-slate-400 border border-slate-700/60';
+            }
+        }
+
+        // Collapsible Panels
+        let leftOpen = true;
+        function toggleLeftPanel() {
+            leftOpen = !leftOpen;
+            document.getElementById('left-panel-body').style.display = leftOpen ? 'block' : 'none';
+            document.getElementById('left-panel-icon').setAttribute('data-lucide', leftOpen ? 'chevron-up' : 'chevron-down');
+            lucide.createIcons();
+        }
+
+        let rightOpen = true;
+        function toggleRightPanel() {
+            rightOpen = !rightOpen;
+            document.getElementById('right-panel-body').style.display = rightOpen ? 'block' : 'none';
+            document.getElementById('right-panel-icon').setAttribute('data-lucide', rightOpen ? 'chevron-up' : 'chevron-down');
+            lucide.createIcons();
+        }
+
+        // Fire & System State Evaluation
+        function toggleFire() {
+            state.fireOn = !state.fireOn;
+            evaluateSystemState();
+        }
+
+        function updateFireDistance(val) {
+            state.fireDistance = parseInt(val, 10);
+            // Move fire group visually slightly along axis toward/away from sensor
+            const norm = (state.fireDistance - 10) / 70; // 0 (close) to 1 (far)
+            const fireX = 0.6 + norm * 2.2;
+            const fireZ = -1.0 - norm * 1.4;
+            fireBaseGroup.position.set(fireX, 0, fireZ);
+            fireLight.position.set(fireX, 1.4, fireZ);
+
+            // Also align sprinkler head & ceiling arm above fire
+            sprinklerGroup.position.set(fireX, 4.55, fireZ);
+            hotspotElements['sprinkler_head'].pos.set(fireX, 4.35, fireZ);
+            ceilingArm.position.set((4.1 + fireX) / 2, 5.15, fireZ);
+            ceilingArm.scale.x = Math.max(0.4, (4.1 - fireX + 0.6) / 2.6);
+            pipeSupportPole.position.z = fireZ;
+
+            evaluateSystemState();
+        }
+
+        function evaluateSystemState() {
+            const btnFire = document.getElementById('btn-toggle-fire');
+            const btnFireText = document.getElementById('btn-fire-text');
+            const distLabel = document.getElementById('distance-val');
+            const inRange = state.fireDistance <= 45;
+
+            distLabel.textContent = `${state.fireDistance} cm (${inRange ? 'Đạt ngưỡng' : 'Ngoài ngưỡng'})`;
+            distLabel.className = `font-mono-tech font-semibold ${inRange ? 'text-orange-400' : 'text-slate-400'}`;
+
+            if (state.fireOn) {
+                btnFire.className = 'px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-orange-300 border border-orange-500/50 transition-all';
+                btnFireText.textContent = 'Tắt Ngọn Lửa';
+            } else {
+                btnFire.className = 'px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white shadow-md shadow-orange-600/30 transition-all';
+                btnFireText.textContent = 'Bật Ngọn Lửa';
+            }
+
+            const triggered = state.fireOn && inRange;
+            state.isTriggered = triggered;
+
+            // Update LED on Sensor
+            doLed.material = triggered ? mats.ledRedOn : mats.ledRedOff;
+
+            // Update Telemetry Readouts
+            const telDo = document.getElementById('telemetry-do');
+            const telRelay = document.getElementById('telemetry-relay');
+            const telPump = document.getElementById('telemetry-pump');
+            const statusDot = document.getElementById('status-dot');
+
+            if (triggered) {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 animate-ping';
+                telDo.textContent = 'LOW (0V)';
+                telDo.className = 'text-xs font-mono-tech font-bold text-orange-400';
+                telRelay.textContent = 'COM → NO';
+                telRelay.className = 'text-xs font-mono-tech font-bold text-emerald-400';
+                telPump.textContent = 'PHUN (100%)';
+                telPump.className = 'text-xs font-mono-tech font-bold text-cyan-400';
+                highlightStepCard(4);
+            } else if (state.fireOn && !inRange) {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
+                telDo.textContent = 'HIGH (5V)';
+                telDo.className = 'text-xs font-mono-tech font-bold text-amber-300';
+                telRelay.textContent = 'COM → NC';
+                telRelay.className = 'text-xs font-mono-tech font-bold text-slate-300';
+                telPump.textContent = 'TẮT (0%)';
+                telPump.className = 'text-xs font-mono-tech font-bold text-slate-400';
+                highlightStepCard(2);
+            } else {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+                telDo.textContent = 'HIGH (5V)';
+                telDo.className = 'text-xs font-mono-tech font-bold text-emerald-400';
+                telRelay.textContent = 'COM → NC';
+                telRelay.className = 'text-xs font-mono-tech font-bold text-slate-300';
+                telPump.textContent = 'TẮT (0%)';
+                telPump.className = 'text-xs font-mono-tech font-bold text-slate-400';
+                highlightStepCard(1);
+            }
+        }
+
+        function highlightStepCard(stepNum) {
+            state.currentStep = stepNum;
+            document.getElementById('step-indicator').textContent = `Bước ${stepNum}/4`;
+            for (let i = 1; i <= 4; i++) {
+                const card = document.getElementById(`step-btn-${i}`);
+                const badge = card.querySelector('span');
+                if (i === stepNum) {
+                    card.className = 'step-card w-full text-left p-2.5 rounded-xl border border-sky-500/60 bg-sky-500/15 transition-all';
+                    badge.className = 'w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0';
+                } else {
+                    card.className = 'step-card w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/70 transition-all';
+                    badge.className = 'w-5 h-5 rounded-full bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0';
+                }
+            }
+        }
+
+        function setPrincipleStep(stepNum) {
+            highlightStepCard(stepNum);
+            if (stepNum === 1) {
+                state.fireOn = false;
+                evaluateSystemState();
+                smoothMoveCamera({ x: 1.5, y: 5.5, z: 11.5 }, { x: 0.2, y: 2.0, z: -0.3 });
+            } else if (stepNum === 2) {
+                state.fireOn = true;
+                state.fireDistance = 55; // Out of range first to show IR emission
+                document.getElementById('fire-distance-slider').value = 55;
+                updateFireDistance(55);
+                selectComponent('ir_diode', true);
+            } else if (stepNum === 3) {
+                state.fireOn = true;
+                state.fireDistance = 25;
+                document.getElementById('fire-distance-slider').value = 25;
+                updateFireDistance(25);
+                if (!state.isXray) toggleXray(true);
+                selectComponent('relay_coil', true);
+            } else if (stepNum === 4) {
+                state.fireOn = true;
+                state.fireDistance = 25;
+                document.getElementById('fire-distance-slider').value = 25;
+                updateFireDistance(25);
+                selectComponent('sprinkler_head', true);
+            }
+        }
+
+        // Initialize default inspector selection
+        selectComponent('ir_diode', false);
+
+        // ==========================================
+        // 9. ANIMATION & RENDER LOOP
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const elapsed = clock.getElapsedTime();
+
+            // 1. Camera Smooth Tweening
+            if (camTween) {
+                camTween.progress += dt * 2.2;
+                const t = Math.min(camTween.progress, 1);
+                const ease = 1 - Math.pow(1 - t, 3);
+                camera.position.lerpVectors(camTween.startPos, camTween.endPos, ease);
+                controls.target.lerpVectors(camTween.startTarget, camTween.endTarget, ease);
+                if (t >= 1) camTween = null;
+            }
+            controls.update();
+
+            // 2. Exploded View Smooth Interpolation
+            const targetExplode = state.isExploded ? 1 : 0;
+            state.explodeProgress += (targetExplode - state.explodeProgress) * dt * 6;
+            explodableParts.forEach(part => {
+                part.mesh.position.copy(part.basePos).addScaledVector(part.offset, state.explodeProgress);
+            });
+            explodeGuideLines.forEach(line => {
+                line.material.opacity = state.explodeProgress * 0.65;
+            });
+
+            // 3. Fire Animation & IR Waves
+            if (state.fireOn) {
+                // Flickering fire light (dimmed slightly when water is spraying)
+                const suppressFactor = state.isTriggered ? 0.55 : 1.0;
+                fireLight.intensity = (1.8 + Math.sin(elapsed * 18) * 0.4) * suppressFactor;
+
+                fireParticles.forEach(p => {
+                    const cycle = (elapsed * p.speed + p.phase) % 1;
+                    const maxHeight = state.isTriggered ? 0.65 : 1.25;
+                    p.mesh.position.y = 0.22 + cycle * maxHeight;
+                    const shrink = 1 - cycle;
+                    p.mesh.position.x = Math.cos(p.angle + elapsed * 2) * p.radius * shrink;
+                    p.mesh.position.z = Math.sin(p.angle + elapsed * 2) * p.radius * shrink;
+                    p.mesh.scale.setScalar(Math.max(0.05, shrink * (state.isTriggered ? 0.75 : 1.15)));
+                    p.mesh.material.opacity = shrink * 0.85;
+                });
+
+                // IR Waves propagating from Fire toward Sensor
+                const fPos = fireBaseGroup.position;
+                irWaves.forEach(w => {
+                    const prog = (elapsed * 0.9 + w.offset) % 1;
+                    w.mesh.position.set(
+                        THREE.MathUtils.lerp(fPos.x, -4.2, prog),
+                        THREE.MathUtils.lerp(0.85, 1.35, prog),
+                        THREE.MathUtils.lerp(fPos.z, 1.5, prog)
+                    );
+                    w.mesh.lookAt(-4.5, 1.2, 1.5);
+                    w.mesh.scale.setScalar(1 + prog * 2.5);
+                    w.mesh.material.opacity = (1 - prog) * 0.65;
+                });
+            } else {
+                fireLight.intensity = 0;
+                fireParticles.forEach(p => { p.mesh.material.opacity = 0; });
+                irWaves.forEach(w => { w.mesh.material.opacity = 0; });
+            }
+
+            // 4. Relay Armature Mechanical Switching (NC <-> NO)
+            const targetArmature = state.isTriggered ? 1 : 0;
+            state.armatureAngle += (targetArmature - state.armatureAngle) * dt * 14;
+            // Rotate armature pivot downward toward NO when triggered
+            armaturePivot.rotation.z = -state.armatureAngle * 0.34;
+
+            // 5. Pump Impeller & Pipe Water Flow
+            if (state.isTriggered) {
+                impellerGroup.rotation.x += dt * 24;
+                innerWaterPipeMat.opacity = 0.78;
+                innerWaterPipeMat.emissiveIntensity = 0.6 + Math.sin(elapsed * 12) * 0.2;
+                // Slightly open sprinkler valve cap
+                valveCap.position.y = -0.14;
+            } else {
+                innerWaterPipeMat.opacity = 0.2;
+                innerWaterPipeMat.emissiveIntensity = 0.1;
+                if (!state.isExploded) valveCap.position.y = -0.08;
+            }
+
+            // 6. Sprinkler Water Spray Cone Animation
+            const spOrigin = sprinklerGroup.position;
+            sprayParticles.forEach(s => {
+                if (state.isTriggered) {
+                    s.mesh.visible = true;
+                    s.progress += dt * s.speed * 1.35;
+                    if (s.progress >= 1) s.progress = 0;
+
+                    const dropDist = s.progress * 4.4;
+                    const coneRadius = 0.18 + s.progress * s.spread * 1.45;
+                    s.mesh.position.set(
+                        spOrigin.x + Math.cos(s.angle) * coneRadius,
+                        spOrigin.y - 0.65 - dropDist,
+                        spOrigin.z + Math.sin(s.angle) * coneRadius
+                    );
+                } else {
+                    s.mesh.visible = false;
+                }
+            });
+
+            // 7. Electron / Signal Flow along Wires
+            wires.forEach(w => {
+                let active = false;
+                if (w.circuitType === 'always') active = true;
+                else if (w.circuitType === 'signal' && state.isTriggered) active = true;
+                else if (w.circuitType === 'power' && state.isTriggered) active = true;
+
+                w.electrons.forEach(e => {
+                    e.mesh.visible = active;
+                    if (active) {
+                        e.t = (e.t + dt * 0.85) % 1;
+                        const pt = w.curve.getPointAt(e.t);
+                        e.mesh.position.copy(pt);
+                    }
+                });
+            });
+
+            // 8. Update 2D Projected Hotspots
+            updateHotspotsPosition();
+
+            renderer.render(scene, camera);
+        }
+
+        // Resize Handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start simulation on window load
+        window.onload = function () {
+            animate();
+        };
+    </script>
+</body>
+</html>
